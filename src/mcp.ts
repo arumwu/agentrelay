@@ -35,8 +35,8 @@ function registerTools(server: McpServer, store: ProjectStore): void {
   server.registerTool(
     "project_init",
     {
-      title: "Initialize or inspect DevRelay",
-      description: "Initialize project-local DevRelay storage and return the fixed repository boundary.",
+      title: "Initialize or inspect AgentRelay",
+      description: "Initialize workspace-local AgentRelay storage and return the fixed filesystem boundary.",
       inputSchema: {},
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
@@ -47,21 +47,23 @@ function registerTools(server: McpServer, store: ProjectStore): void {
     "agent_join",
     {
       title: "Join an agent session",
-      description: "Register a coding agent session in this repository before claiming work.",
+      description: "Register a coding agent session and its current directory inside this workspace.",
       inputSchema: {
         agent_id: z.string().min(1).max(120),
         agent_type: z.enum(agentTypes),
+        working_directory: z.string().min(1).max(2_000).optional(),
         task_summary: z.string().max(2_000).optional(),
         metadata: z.record(z.string(), z.unknown()).optional(),
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     },
-    async ({ agent_id, agent_type, task_summary, metadata }) => {
+    async ({ agent_id, agent_type, working_directory, task_summary, metadata }) => {
       try {
         return response(
           store.joinAgent({
             agentId: agent_id,
             agentType: agent_type as AgentType,
+            ...(working_directory ? { workingDirectory: working_directory } : {}),
             ...(task_summary ? { taskSummary: task_summary } : {}),
             ...(metadata ? { metadata } : {}),
           }),
@@ -130,7 +132,7 @@ function registerTools(server: McpServer, store: ProjectStore): void {
     "claim_scope",
     {
       title: "Claim files or modules",
-      description: "Register advisory repository-relative file or glob claims and report overlaps.",
+      description: "Register advisory workspace-relative file or glob claims and report overlaps.",
       inputSchema: {
         session_id: z.string().uuid(),
         patterns: z.array(z.string().min(1).max(500)).min(1).max(50),
@@ -264,12 +266,17 @@ function registerTools(server: McpServer, store: ProjectStore): void {
       inputSchema: {
         task: z.string().min(1).max(2_000),
         token_budget: z.number().int().min(500).max(20_000).default(5_000),
+        working_directory: z.string().min(1).max(2_000).optional(),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     },
-    async ({ task, token_budget }) => {
+    async ({ task, token_budget, working_directory }) => {
       try {
-        return response(store.buildContext({ task, tokenBudget: token_budget }));
+        return response(store.buildContext({
+          task,
+          tokenBudget: token_budget,
+          ...(working_directory ? { workingDirectory: working_directory } : {}),
+        }));
       } catch (error) {
         return failure(error);
       }
@@ -309,7 +316,7 @@ function registerTools(server: McpServer, store: ProjectStore): void {
 }
 
 export function createMcpServer(store: ProjectStore): McpServer {
-  const server = new McpServer({ name: "devrelay", version: "0.1.0" });
+  const server = new McpServer({ name: "agentrelay", version: "0.3.0" });
   registerTools(server, store);
   return server;
 }

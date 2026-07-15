@@ -113,7 +113,7 @@ describe("ProjectStore multi-agent workflow", () => {
       task: "Finish OAuth callback",
       tokenBudget: 2_000,
     }) as { context: string; estimatedTokens: number };
-    expect(context.context).toContain("DevRelay Context Pack");
+    expect(context.context).toContain("AgentRelay Context Pack");
     expect(context.context).toContain("Service account OAuth failed");
     expect(context.context).not.toContain("do-not-capture");
     expect(context.estimatedTokens).toBeLessThanOrEqual(2_000);

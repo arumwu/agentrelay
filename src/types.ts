@@ -22,12 +22,15 @@ export type EventType =
   | "task_completed";
 
 export interface GitSnapshot {
+  available: boolean;
+  repositoryRoot: string | null;
   branch: string;
   head: string | null;
   status: string[];
   changedFiles: string[];
   diffStat: string;
   recentCommit: string | null;
+  reason: string | null;
 }
 
 export interface ProjectRecord {
@@ -42,6 +45,7 @@ export interface SessionRecord {
   projectId: string;
   agentId: string;
   agentType: AgentType;
+  workingPath: string;
   branch: string;
   taskSummary: string | null;
   status: "active" | "ended";

@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-DevRelay is pre-1.0 software. Security fixes are applied to the latest released version.
+AgentRelay is pre-1.0 software. Security fixes are applied to the latest released version.
 
 ## Reporting a vulnerability
 
@@ -12,25 +12,25 @@ Include the affected version, operating system, reproduction steps, security imp
 
 ## Threat model
 
-DevRelay assumes coding agents and repository content may produce inaccurate or adversarial text. Stored memory is treated as context, not executable instructions.
+AgentRelay assumes coding agents and repository content may produce inaccurate or adversarial text. Stored memory is treated as context, not executable instructions.
 
 The v0.1 boundary is intentionally narrow:
 
-- one fixed Git repository per server process
+- one fixed repository or workspace boundary per server process
 - local SQLite and Markdown storage
 - no arbitrary shell command tool
 - fixed Git command argument arrays
-- repository-relative scope paths only
+- workspace-relative scope paths only
 - path traversal and absolute-path rejection
 - sensitive filename filtering
 - best-effort secret redaction before persistence
 
-Secret redaction is defense in depth, not a substitute for avoiding secret input. Users should not intentionally send credentials to DevRelay.
+Secret redaction is defense in depth, not a substitute for avoiding secret input. Users should not intentionally send credentials to AgentRelay.
 
 ## Out of scope for v0.1
 
-- hostile local users with filesystem access to `.devrelay/`
+- hostile local users with filesystem access to `.agentrelay/`
 - full-disk compromise
-- malicious changes to the DevRelay executable or dependencies
+- malicious changes to the AgentRelay executable or dependencies
 - perfect detection of every possible credential format
-- enforcing scope claims against tools that bypass DevRelay
+- enforcing scope claims against tools that bypass AgentRelay
