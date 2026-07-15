@@ -35,8 +35,8 @@ function registerTools(server: McpServer, store: ProjectStore): void {
   server.registerTool(
     "project_init",
     {
-      title: "Initialize or inspect DevRelay",
-      description: "Initialize workspace-local DevRelay storage and return the fixed filesystem boundary.",
+      title: "Initialize or inspect AgentRelay",
+      description: "Initialize workspace-local AgentRelay storage and return the fixed filesystem boundary.",
       inputSchema: {},
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
@@ -316,7 +316,7 @@ function registerTools(server: McpServer, store: ProjectStore): void {
 }
 
 export function createMcpServer(store: ProjectStore): McpServer {
-  const server = new McpServer({ name: "devrelay", version: "0.2.0" });
+  const server = new McpServer({ name: "agentrelay", version: "0.3.0" });
   registerTools(server, store);
   return server;
 }

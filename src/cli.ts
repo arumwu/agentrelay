@@ -22,14 +22,14 @@ function withStore<T>(repo: string, callback: (store: ProjectStore) => T): T {
 }
 
 const program = new Command()
-  .name("devrelay")
+  .name("agentrelay")
   .description("Local-first coordination and shared project memory for coding agents.")
-  .version("0.2.0")
+  .version("0.3.0")
   .option("-r, --repo <path>", "Workspace or Git repository to coordinate", process.cwd());
 
 program
   .command("init")
-  .description("Initialize .devrelay storage in the workspace")
+  .description("Initialize .agentrelay storage in the workspace")
   .option("--name <name>", "Project display name")
   .action((options: { name?: string }) => {
     const repo = program.opts<{ repo: string }>().repo;
@@ -43,7 +43,7 @@ program
 
 program
   .command("serve")
-  .description("Run the DevRelay MCP server over stdio")
+  .description("Run the AgentRelay MCP server over stdio")
   .action(async () => {
     const repo = program.opts<{ repo: string }>().repo;
     await serveStdio(new ProjectStore(repo));

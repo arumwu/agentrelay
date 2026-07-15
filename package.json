@@ -1,7 +1,7 @@
 {
-  "name": "@arumwu/devrelay",
-  "version": "0.2.0",
-  "description": "Local-first coordination, handoffs, and shared project memory for coding agents.",
+  "name": "@arumwu/agentrelay",
+  "version": "0.3.0",
+  "description": "One project. Multiple AI agents. Zero repeated work.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,7 +12,7 @@
     }
   },
   "bin": {
-    "devrelay": "dist/cli.js"
+    "agentrelay": "dist/cli.js"
   },
   "files": [
     "dist",
@@ -40,12 +40,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arumwu/devrelay.git"
+    "url": "git+https://github.com/arumwu/agentrelay.git"
   },
   "bugs": {
-    "url": "https://github.com/arumwu/devrelay/issues"
+    "url": "https://github.com/arumwu/agentrelay/issues"
   },
-  "homepage": "https://github.com/arumwu/devrelay#readme",
+  "homepage": "https://github.com/arumwu/agentrelay#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.11.1",

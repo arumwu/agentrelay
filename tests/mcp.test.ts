@@ -21,7 +21,7 @@ describe("MCP surface", () => {
 
   it("advertises the ten coordination tools and accepts a join call", async () => {
     const server = createMcpServer(store);
-    const client = new Client({ name: "devrelay-test-client", version: "1.0.0" });
+    const client = new Client({ name: "agentrelay-test-client", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await server.connect(serverTransport);
     await client.connect(clientTransport);

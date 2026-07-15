@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 
 export function createTestRepository(): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "devrelay-test-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentrelay-test-"));
   const run = (args: string[]) => {
     const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
@@ -14,9 +14,9 @@ export function createTestRepository(): string {
   run(["add", "README.md"]);
   run([
     "-c",
-    "user.name=DevRelay Tests",
+    "user.name=AgentRelay Tests",
     "-c",
-    "user.email=devrelay@example.invalid",
+    "user.email=agentrelay@example.invalid",
     "commit",
     "-m",
     "initial fixture",
@@ -29,7 +29,7 @@ export function removeTestRepository(root: string): void {
 }
 
 export function createTestWorkspace(): { root: string; repository: string } {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "devrelay-workspace-test-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "agentrelay-workspace-test-"));
   const repository = path.join(root, "project-a");
   fs.mkdirSync(repository);
   const run = (args: string[]) => {
@@ -41,9 +41,9 @@ export function createTestWorkspace(): { root: string; repository: string } {
   run(["add", "README.md"]);
   run([
     "-c",
-    "user.name=DevRelay Tests",
+    "user.name=AgentRelay Tests",
     "-c",
-    "user.email=devrelay@example.invalid",
+    "user.email=agentrelay@example.invalid",
     "commit",
     "-m",
     "initial nested fixture",

@@ -145,9 +145,23 @@ export interface DatabaseHandle {
 }
 
 export function openDatabase(rootPath: string): DatabaseHandle {
-  const dataDir = path.join(rootPath, ".devrelay");
+  const legacyDataDir = path.join(rootPath, ".devrelay");
+  const dataDir = path.join(rootPath, ".agentrelay");
+  if (!fs.existsSync(dataDir) && fs.existsSync(legacyDataDir)) {
+    fs.renameSync(legacyDataDir, dataDir);
+  }
   fs.mkdirSync(path.join(dataDir, "handoffs"), { recursive: true, mode: 0o700 });
-  const dbPath = path.join(dataDir, "devrelay.db");
+  const legacyDbPath = path.join(dataDir, "devrelay.db");
+  const dbPath = path.join(dataDir, "agentrelay.db");
+  if (!fs.existsSync(dbPath) && fs.existsSync(legacyDbPath)) {
+    fs.renameSync(legacyDbPath, dbPath);
+    for (const suffix of ["-wal", "-shm"]) {
+      const legacySidecar = `${legacyDbPath}${suffix}`;
+      if (fs.existsSync(legacySidecar)) {
+        fs.renameSync(legacySidecar, `${dbPath}${suffix}`);
+      }
+    }
+  }
   const db = new Database(dbPath);
   fs.chmodSync(dbPath, 0o600);
   db.pragma("journal_mode = WAL");

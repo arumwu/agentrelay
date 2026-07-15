@@ -67,6 +67,24 @@ describe("workspace mode", () => {
         agentType: "other",
         workingDirectory: os.tmpdir(),
       }),
-    ).toThrow(/outside the DevRelay workspace/);
+    ).toThrow(/outside the AgentRelay workspace/);
+  });
+
+  it("migrates legacy DevRelay storage without changing project identity", () => {
+    const projectId = store.project.id;
+    store.close();
+    const newDirectory = path.join(root, ".agentrelay");
+    const legacyDirectory = path.join(root, ".devrelay");
+    fs.renameSync(newDirectory, legacyDirectory);
+    fs.renameSync(
+      path.join(legacyDirectory, "agentrelay.db"),
+      path.join(legacyDirectory, "devrelay.db"),
+    );
+
+    store = new ProjectStore(root);
+
+    expect(store.project.id).toBe(projectId);
+    expect(fs.existsSync(path.join(root, ".agentrelay", "agentrelay.db"))).toBe(true);
+    expect(fs.existsSync(legacyDirectory)).toBe(false);
   });
 });

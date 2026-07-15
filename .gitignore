@@ -1,6 +1,7 @@
 node_modules/
 dist/
 coverage/
+.agentrelay/
 .devrelay/
 *.log
 .DS_Store

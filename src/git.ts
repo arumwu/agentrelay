@@ -62,7 +62,7 @@ export function resolveWorkingDirectory(workspaceRoot: string, inputPath?: strin
   const realPath = fs.realpathSync(candidate);
   const relative = path.relative(workspaceRoot, realPath);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error(`Working directory is outside the DevRelay workspace: ${realPath}`);
+    throw new Error(`Working directory is outside the AgentRelay workspace: ${realPath}`);
   }
   return realPath;
 }

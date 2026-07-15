@@ -782,7 +782,7 @@ export class ProjectStore {
       .all(this.project.id) as EventRow[];
 
     const sections = [
-      `# DevRelay Context Pack\n\nTask: ${redactSecrets(input.task)}\nWorkspace: ${this.project.name}\nBoundary: ${this.rootPath}\nWorking directory: ${workingPath}`,
+      `# AgentRelay Context Pack\n\nTask: ${redactSecrets(input.task)}\nWorkspace: ${this.project.name}\nBoundary: ${this.rootPath}\nWorking directory: ${workingPath}`,
       `## Git snapshot\n\n${JSON.stringify(status.git, null, 2)}`,
       `## Active agents\n\n${JSON.stringify(status.activeSessions, null, 2)}`,
       `## Open tasks and leases\n\n${JSON.stringify(status.openTasks, null, 2)}`,
