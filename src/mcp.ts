@@ -17,6 +17,15 @@ const eventTypes = [
 ] as const;
 const searchKinds = ["event", "decision", "handoff"] as const;
 
+export const AGENTRELAY_INSTRUCTIONS = [
+  "AgentRelay coordinates coding agents for this configured workspace.",
+  "At the start of development, call agent_join with the current working_directory, then build_context and agent_status.",
+  "Before editing, call claim_task and claim_scope and stop on relevant conflicts.",
+  "Record durable decisions with record_decision and tests, results, failures, discoveries, and blockers with record_event.",
+  "Before ending or handing off, call create_handoff.",
+  "Never store credentials, tokens, raw .env values, cookies, or private keys.",
+].join(" ");
+
 function response(value: unknown) {
   return {
     content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
@@ -316,7 +325,10 @@ function registerTools(server: McpServer, store: ProjectStore): void {
 }
 
 export function createMcpServer(store: ProjectStore): McpServer {
-  const server = new McpServer({ name: "agentrelay", version: "0.3.0" });
+  const server = new McpServer(
+    { name: "agentrelay", version: "0.3.1" },
+    { instructions: AGENTRELAY_INSTRUCTIONS },
+  );
   registerTools(server, store);
   return server;
 }

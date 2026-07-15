@@ -8,7 +8,7 @@ It tracks active sessions, task leases, advisory file ownership, decisions, fail
 
 > Not another chat memory. A local coordination layer for coding agents.
 
-## What works in v0.3
+## What works in v0.3.1
 
 - Local-first SQLite storage inside a repository or workspace
 - Fixed non-Git workspace boundaries with child-repository Git context
@@ -93,38 +93,32 @@ agentrelay handoff \
 
 ## Connect Codex
 
-For a source checkout, register the built CLI and pin it to the repository or workspace the agents will coordinate:
-
-```bash
-codex mcp add agentrelay -- \
-  node /absolute/path/to/agentrelay/dist/cli.js \
-  --repo /absolute/path/to/your/workspace \
-  serve
-```
-
-Equivalent `config.toml`:
+Configure AgentRelay in the actual Git repository where Codex starts. Create `.codex/config.toml` at that repository root:
 
 ```toml
 [mcp_servers.agentrelay]
-command = "node"
+command = "agentrelay"
 args = [
-  "/absolute/path/to/agentrelay/dist/cli.js",
   "--repo",
   "/absolute/path/to/your/workspace",
   "serve"
 ]
 ```
 
+Do not use a user-global `codex mcp add` unless you intentionally want every Codex session to start AgentRelay. Codex stops project-config discovery at the Git root, so a `.codex/config.toml` placed only in a parent multi-project workspace is not inherited when Codex starts directly inside a nested repository. Add the project config to each actual repository that should participate; all of them may still point to the same AgentRelay workspace boundary.
+
 ## Connect Claude Code
 
+Run this from each actual repository and use local scope so unrelated Claude Code sessions do not start AgentRelay:
+
 ```bash
-claude mcp add agentrelay -- \
-  node /absolute/path/to/agentrelay/dist/cli.js \
+claude mcp add --scope local agentrelay -- \
+  agentrelay \
   --repo /absolute/path/to/your/workspace \
   serve
 ```
 
-Then place the lifecycle rules from [`examples/AGENTS.md`](examples/AGENTS.md) in the repository's `AGENTS.md` or `CLAUDE.md`.
+AgentRelay advertises its lifecycle instructions through MCP initialization. For clients that do not consume server instructions, place the fallback rules from [`examples/AGENTS.md`](examples/AGENTS.md) in the repository's `AGENTS.md` or `CLAUDE.md`.
 
 ## Workspace mode
 

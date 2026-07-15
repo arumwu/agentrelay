@@ -2,6 +2,8 @@
 
 This repository or parent workspace uses AgentRelay as shared coordination state for coding agents.
 
+AgentRelay normally advertises this lifecycle through MCP server instructions. Use this file as a repository-local fallback for clients that do not consume those instructions; do not install it as a global rule unless AgentRelay is intentionally available in every session.
+
 ## Before editing
 
 1. Call `agent_join` with a stable agent ID, agent type, concise task summary, and the current `working_directory` inside the configured workspace.

@@ -24,7 +24,7 @@ function withStore<T>(repo: string, callback: (store: ProjectStore) => T): T {
 const program = new Command()
   .name("agentrelay")
   .description("Local-first coordination and shared project memory for coding agents.")
-  .version("0.3.0")
+  .version("0.3.1")
   .option("-r, --repo <path>", "Workspace or Git repository to coordinate", process.cwd());
 
 program

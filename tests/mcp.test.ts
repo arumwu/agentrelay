@@ -26,6 +26,9 @@ describe("MCP surface", () => {
     await server.connect(serverTransport);
     await client.connect(clientTransport);
 
+    expect(client.getInstructions()).toContain("At the start of development");
+    expect(client.getInstructions()).toContain("Before ending or handing off");
+
     const listed = await client.listTools();
     expect(listed.tools.map((tool) => tool.name).sort()).toEqual([
       "agent_join",
