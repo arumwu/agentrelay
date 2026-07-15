@@ -27,3 +27,26 @@ export function createTestRepository(): string {
 export function removeTestRepository(root: string): void {
   fs.rmSync(root, { recursive: true, force: true });
 }
+
+export function createTestWorkspace(): { root: string; repository: string } {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "devrelay-workspace-test-"));
+  const repository = path.join(root, "project-a");
+  fs.mkdirSync(repository);
+  const run = (args: string[]) => {
+    const result = spawnSync("git", ["-C", repository, ...args], { encoding: "utf8" });
+    if (result.status !== 0) throw new Error(result.stderr);
+  };
+  run(["init", "-b", "main"]);
+  fs.writeFileSync(path.join(repository, "README.md"), "# Nested fixture\n", "utf8");
+  run(["add", "README.md"]);
+  run([
+    "-c",
+    "user.name=DevRelay Tests",
+    "-c",
+    "user.email=devrelay@example.invalid",
+    "commit",
+    "-m",
+    "initial nested fixture",
+  ]);
+  return { root: fs.realpathSync(root), repository: fs.realpathSync(repository) };
+}

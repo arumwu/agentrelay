@@ -4,7 +4,11 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { minimatch } from "minimatch";
 import { openDatabase } from "./db.js";
-import { captureGitSnapshot, resolveRepositoryRoot } from "./git.js";
+import {
+  captureGitSnapshot,
+  resolveWorkingDirectory,
+  resolveWorkspaceRoot,
+} from "./git.js";
 import {
   assertSafeRelativePattern,
   filterSafePaths,
@@ -15,6 +19,7 @@ import {
 import type {
   AgentType,
   EventType,
+  GitSnapshot,
   ProjectRecord,
   ScopeClaimRecord,
   SearchResult,
@@ -34,6 +39,7 @@ interface SessionRow {
   project_id: string;
   agent_id: string;
   agent_type: AgentType;
+  working_path: string;
   branch: string;
   task_summary: string | null;
   status: "active" | "ended";
@@ -138,6 +144,7 @@ function mapSession(row: SessionRow): SessionRecord {
     projectId: row.project_id,
     agentId: row.agent_id,
     agentType: row.agent_type,
+    workingPath: row.working_path,
     branch: row.branch,
     taskSummary: row.task_summary,
     status: row.status,
@@ -213,6 +220,12 @@ function truncate(value: string, maxChars: number): string {
   return `${value.slice(0, Math.max(0, maxChars - 24))}\n…[context truncated]`;
 }
 
+function workspaceChangedFiles(workspaceRoot: string, snapshot: GitSnapshot): string[] {
+  if (!snapshot.repositoryRoot) return [];
+  const prefix = path.relative(workspaceRoot, snapshot.repositoryRoot).replaceAll(path.sep, "/");
+  return snapshot.changedFiles.map((file) => (prefix ? `${prefix}/${file}` : file));
+}
+
 export class ProjectStore {
   readonly rootPath: string;
   readonly dataDir: string;
@@ -221,7 +234,7 @@ export class ProjectStore {
   private readonly db: Database.Database;
 
   constructor(inputPath: string, projectName?: string) {
-    this.rootPath = resolveRepositoryRoot(inputPath);
+    this.rootPath = resolveWorkspaceRoot(inputPath);
     const handle = openDatabase(this.rootPath);
     this.db = handle.db;
     this.dataDir = handle.dataDir;
@@ -253,7 +266,7 @@ export class ProjectStore {
   private requireSession(sessionId: string): SessionRecord {
     const row = this.db
       .prepare(
-        "SELECT id, project_id, agent_id, agent_type, branch, task_summary, status, started_at, last_seen_at, ended_at FROM sessions WHERE id = ? AND project_id = ?",
+        "SELECT id, project_id, agent_id, agent_type, working_path, branch, task_summary, status, started_at, last_seen_at, ended_at FROM sessions WHERE id = ? AND project_id = ?",
       )
       .get(sessionId, this.project.id) as SessionRow | undefined;
     if (!row) throw new Error(`Unknown agent session: ${sessionId}`);
@@ -303,9 +316,10 @@ export class ProjectStore {
     return {
       project: this.project,
       database: this.dbPath,
+      mode: snapshot.available ? "repository" : "workspace",
       git: snapshot,
       security: {
-        repositoryBoundary: this.rootPath,
+        workspaceBoundary: this.rootPath,
         arbitraryShellCommands: false,
         secretRedaction: true,
       },
@@ -315,6 +329,7 @@ export class ProjectStore {
   joinAgent(input: {
     agentId: string;
     agentType: AgentType;
+    workingDirectory?: string;
     taskSummary?: string;
     metadata?: Record<string, unknown>;
   }): SessionRecord {
@@ -322,19 +337,21 @@ export class ProjectStore {
     if (!VALID_AGENT_TYPES.has(input.agentType)) throw new Error(`Unsupported agent type: ${input.agentType}`);
     const timestamp = now();
     const sessionId = randomUUID();
-    const branch = captureGitSnapshot(this.rootPath).branch;
+    const workingPath = resolveWorkingDirectory(this.rootPath, input.workingDirectory);
+    const branch = captureGitSnapshot(workingPath).branch;
     const taskSummary = input.taskSummary ? redactSecrets(input.taskSummary) : null;
     this.db
       .prepare(
         `INSERT INTO sessions
-         (id, project_id, agent_id, agent_type, branch, task_summary, status, metadata_json, started_at, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
+         (id, project_id, agent_id, agent_type, working_path, branch, task_summary, status, metadata_json, started_at, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
       )
       .run(
         sessionId,
         this.project.id,
         redactSecrets(input.agentId.trim()),
         input.agentType,
+        workingPath,
         branch,
         taskSummary,
         JSON.stringify(redactStructured(input.metadata ?? {})),
@@ -345,7 +362,7 @@ export class ProjectStore {
       sessionId,
       eventType: "agent_joined",
       summary: `${input.agentId} joined on ${branch}`,
-      content: taskSummary ?? "Agent joined without a task summary.",
+      content: `${taskSummary ?? "Agent joined without a task summary."}\nWorking directory: ${path.relative(this.rootPath, workingPath) || "."}`,
     });
     return this.requireSession(sessionId);
   }
@@ -376,7 +393,7 @@ export class ProjectStore {
     const timestamp = now();
     const sessions = this.db
       .prepare(
-        "SELECT id, project_id, agent_id, agent_type, branch, task_summary, status, started_at, last_seen_at, ended_at FROM sessions WHERE project_id = ? AND status = 'active' ORDER BY last_seen_at DESC",
+        "SELECT id, project_id, agent_id, agent_type, working_path, branch, task_summary, status, started_at, last_seen_at, ended_at FROM sessions WHERE project_id = ? AND status = 'active' ORDER BY last_seen_at DESC",
       )
       .all(this.project.id) as SessionRow[];
     const tasks = this.db
@@ -737,7 +754,7 @@ export class ProjectStore {
     }));
   }
 
-  buildContext(input: { task: string; tokenBudget?: number }): Record<string, unknown> {
+  buildContext(input: { task: string; tokenBudget?: number; workingDirectory?: string }): Record<string, unknown> {
     if (!input.task.trim()) throw new Error("Context task cannot be empty.");
     const tokenBudget = input.tokenBudget ?? 5000;
     if (!Number.isInteger(tokenBudget) || tokenBudget < 500 || tokenBudget > 20_000) {
@@ -750,6 +767,8 @@ export class ProjectStore {
       openTasks: TaskRecord[];
       activeScopeClaims: ScopeClaimRecord[];
     };
+    const workingPath = resolveWorkingDirectory(this.rootPath, input.workingDirectory);
+    status.git = captureGitSnapshot(workingPath);
     const related = this.searchMemory(input.task, 20);
     const activeDecisions = this.db
       .prepare(
@@ -763,7 +782,7 @@ export class ProjectStore {
       .all(this.project.id) as EventRow[];
 
     const sections = [
-      `# DevRelay Context Pack\n\nTask: ${redactSecrets(input.task)}\nProject: ${this.project.name}\nRepository: ${this.rootPath}`,
+      `# DevRelay Context Pack\n\nTask: ${redactSecrets(input.task)}\nWorkspace: ${this.project.name}\nBoundary: ${this.rootPath}\nWorking directory: ${workingPath}`,
       `## Git snapshot\n\n${JSON.stringify(status.git, null, 2)}`,
       `## Active agents\n\n${JSON.stringify(status.activeSessions, null, 2)}`,
       `## Open tasks and leases\n\n${JSON.stringify(status.openTasks, null, 2)}`,
@@ -796,7 +815,8 @@ export class ProjectStore {
   }): Record<string, unknown> {
     const session = this.requireActiveSession(input.sessionId);
     if (input.taskId) this.requireTask(input.taskId);
-    const snapshot = captureGitSnapshot(this.rootPath);
+    const snapshot = captureGitSnapshot(session.workingPath);
+    const changedFiles = workspaceChangedFiles(this.rootPath, snapshot);
     const timestamp = now();
     const id = randomUUID();
     const events = this.db
@@ -833,6 +853,9 @@ export class ProjectStore {
 
 Created: ${timestamp}
 Agent: ${session.agentId} (${session.agentType})
+Workspace: ${this.rootPath}
+Working directory: ${session.workingPath}
+Git repository: ${snapshot.repositoryRoot ?? "Not available"}
 Branch: ${snapshot.branch}
 Commit: ${snapshot.head ?? "No commit yet"}
 
@@ -846,7 +869,7 @@ ${ownedTasks.map((task) => `- [${task.status}] ${task.title}`).join("\n") || "No
 
 ## Files changed
 
-${snapshot.changedFiles.map((file) => `- ${file}`).join("\n") || "No safe changed files detected."}
+${changedFiles.map((file) => `- ${file}`).join("\n") || "No safe changed files detected."}
 
 ## Git diff summary
 
@@ -895,7 +918,7 @@ Read this handoff, call build_context for the next task, then claim the task and
           body,
           snapshot.head,
           snapshot.branch,
-          JSON.stringify(snapshot.changedFiles),
+          JSON.stringify(changedFiles),
           timestamp,
         );
       this.appendSearchDocument("handoff", id, title, body, timestamp);
@@ -918,7 +941,7 @@ Read this handoff, call build_context for the next task, then claim the task and
       eventType: "handoff_created",
       summary: title,
       content: `Handoff written to ${path.relative(this.rootPath, filePath)}.`,
-      files: snapshot.changedFiles,
+      files: changedFiles,
     });
     return { id, title, body, filePath, git: snapshot, sessionEnded: input.endSession ?? true };
   }

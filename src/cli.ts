@@ -24,12 +24,12 @@ function withStore<T>(repo: string, callback: (store: ProjectStore) => T): T {
 const program = new Command()
   .name("devrelay")
   .description("Local-first coordination and shared project memory for coding agents.")
-  .version("0.1.0")
-  .option("-r, --repo <path>", "Git repository to coordinate", process.cwd());
+  .version("0.2.0")
+  .option("-r, --repo <path>", "Workspace or Git repository to coordinate", process.cwd());
 
 program
   .command("init")
-  .description("Initialize .devrelay storage in the repository")
+  .description("Initialize .devrelay storage in the workspace")
   .option("--name <name>", "Project display name")
   .action((options: { name?: string }) => {
     const repo = program.opts<{ repo: string }>().repo;
@@ -54,12 +54,14 @@ program
   .description("Register an agent session")
   .requiredOption("--agent <id>", "Stable agent identifier")
   .addOption(new Option("--type <type>", "Agent type").choices(["codex", "claude-code", "gemini-cli", "cursor", "cline", "other"]).default("other"))
+  .option("--cwd <path>", "Current directory inside the workspace")
   .option("--task <summary>", "Current task summary")
-  .action((options: { agent: string; type: AgentType; task?: string }) => {
+  .action((options: { agent: string; type: AgentType; cwd?: string; task?: string }) => {
     const repo = program.opts<{ repo: string }>().repo;
     print(withStore(repo, (store) => store.joinAgent({
       agentId: options.agent,
       agentType: options.type,
+      ...(options.cwd ? { workingDirectory: options.cwd } : {}),
       ...(options.task ? { taskSummary: options.task } : {}),
     })));
   });
@@ -177,9 +179,14 @@ program
   .description("Compile a task-specific context pack")
   .argument("<task>", "Task description")
   .option("--budget <tokens>", "Approximate token budget", "5000")
-  .action((task: string, options: { budget: string }) => {
+  .option("--cwd <path>", "Current directory inside the workspace")
+  .action((task: string, options: { budget: string; cwd?: string }) => {
     const repo = program.opts<{ repo: string }>().repo;
-    print(withStore(repo, (store) => store.buildContext({ task, tokenBudget: Number(options.budget) })));
+    print(withStore(repo, (store) => store.buildContext({
+      task,
+      tokenBudget: Number(options.budget),
+      ...(options.cwd ? { workingDirectory: options.cwd } : {}),
+    })));
   });
 
 program

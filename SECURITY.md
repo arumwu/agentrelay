@@ -16,11 +16,11 @@ DevRelay assumes coding agents and repository content may produce inaccurate or 
 
 The v0.1 boundary is intentionally narrow:
 
-- one fixed Git repository per server process
+- one fixed repository or workspace boundary per server process
 - local SQLite and Markdown storage
 - no arbitrary shell command tool
 - fixed Git command argument arrays
-- repository-relative scope paths only
+- workspace-relative scope paths only
 - path traversal and absolute-path rejection
 - sensitive filename filtering
 - best-effort secret redaction before persistence

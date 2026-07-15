@@ -1,14 +1,15 @@
 # DevRelay
 
-**DevRelay coordinates coding agents working on the same repository.**
+**DevRelay coordinates coding agents working in the same repository or multi-project workspace.**
 
 It tracks active sessions, task leases, advisory file ownership, decisions, failed attempts, Git state, and handoffs so Codex, Claude Code, and other agents can continue each other's work without rebuilding context from scratch.
 
 > Not another chat memory. A local coordination layer for coding agents.
 
-## What works in v0.1
+## What works in v0.2
 
-- Local-first SQLite storage inside the repository
+- Local-first SQLite storage inside a repository or workspace
+- Fixed non-Git workspace boundaries with child-repository Git context
 - MCP server with ten focused tools
 - Agent sessions and heartbeats
 - Expiring task leases
@@ -52,11 +53,15 @@ Node.js 22.13 or newer is required.
 
 ## Quick start
 
-Run these commands from any Git repository, or pass `--repo /absolute/path` before the subcommand.
+Run these commands from a Git repository, or pin DevRelay to a larger workspace with `--repo /absolute/path` before the subcommand.
 
 ```bash
-devrelay init
-devrelay join --agent codex-01 --type codex --task "Implement OAuth callback"
+devrelay --repo /workspaces/company init
+devrelay --repo /workspaces/company join \
+  --agent codex-01 \
+  --type codex \
+  --cwd products/api \
+  --task "Implement OAuth callback"
 ```
 
 The `join` command returns a session UUID. Use it for claims and event records:
@@ -77,7 +82,7 @@ devrelay event \
   --summary "Service account approach failed" \
   --content "Normal user OAuth requires authorization-code flow"
 
-devrelay context "Finish OAuth refresh flow" --budget 5000
+devrelay context "Finish OAuth refresh flow" --cwd products/api --budget 5000
 
 devrelay handoff \
   --session SESSION_UUID \
@@ -86,12 +91,12 @@ devrelay handoff \
 
 ## Connect Codex
 
-For a source checkout, register the built CLI and pin it to the repository the agents will coordinate:
+For a source checkout, register the built CLI and pin it to the repository or workspace the agents will coordinate:
 
 ```bash
 codex mcp add devrelay -- \
   node /absolute/path/to/devrelay/dist/cli.js \
-  --repo /absolute/path/to/your/repository \
+  --repo /absolute/path/to/your/workspace \
   serve
 ```
 
@@ -103,7 +108,7 @@ command = "node"
 args = [
   "/absolute/path/to/devrelay/dist/cli.js",
   "--repo",
-  "/absolute/path/to/your/repository",
+  "/absolute/path/to/your/workspace",
   "serve"
 ]
 ```
@@ -113,21 +118,37 @@ args = [
 ```bash
 claude mcp add devrelay -- \
   node /absolute/path/to/devrelay/dist/cli.js \
-  --repo /absolute/path/to/your/repository \
+  --repo /absolute/path/to/your/workspace \
   serve
 ```
 
 Then place the lifecycle rules from [`examples/AGENTS.md`](examples/AGENTS.md) in the repository's `AGENTS.md` or `CLAUDE.md`.
 
+## Workspace mode
+
+A workspace may contain many independent Git repositories and non-Git projects:
+
+```text
+/workspaces/company/             <- fixed DevRelay boundary
+├── .devrelay/                   <- shared workspace memory
+├── products/api/.git/
+├── products/web/.git/
+└── research-notes/
+```
+
+The MCP server remains fixed to `/workspaces/company`. Each `agent_join` and `build_context` call may include `working_directory`, such as `products/api`. DevRelay rejects directories outside the fixed workspace and obtains Git status from the child repository containing that working directory.
+
+Task and scope claims remain workspace-wide. In the example above, claim `products/api/src/**`, not only `src/**`, to avoid ambiguity between child projects.
+
 ## MCP tools
 
 | Tool | Purpose |
 |---|---|
-| `project_init` | Initialize or inspect project-local storage and its repository boundary |
-| `agent_join` | Register an identified coding-agent session |
+| `project_init` | Initialize or inspect workspace-local storage and its fixed boundary |
+| `agent_join` | Register an agent session and its current workspace directory |
 | `agent_status` | Read coordination state and optionally heartbeat a session |
 | `claim_task` | Create or claim an expiring task lease |
-| `claim_scope` | Claim repository-relative files or globs and receive overlap warnings |
+| `claim_scope` | Claim workspace-relative files or globs and receive overlap warnings |
 | `record_event` | Record an attempt, result, issue, discovery, test, note, or completion |
 | `record_decision` | Record a structured decision and identify potential conflicts |
 | `search_memory` | Search events, decisions, and handoffs with SQLite FTS5 |
@@ -136,7 +157,7 @@ Then place the lifecycle rules from [`examples/AGENTS.md`](examples/AGENTS.md) i
 
 ## Local data
 
-Each coordinated repository owns its memory:
+Each coordinated repository or workspace owns its memory:
 
 ```text
 .devrelay/
@@ -146,7 +167,7 @@ Each coordinated repository owns its memory:
     └── 2026-...-handoff.md
 ```
 
-`.devrelay/` is excluded from this repository's Git history by default. A team may choose to version redacted handoff exports, but the database should normally remain local.
+`.devrelay/` is excluded from this repository's Git history by default. In a non-Git workspace it remains a hidden local directory. A team may choose to version redacted handoff exports, but the database should normally remain local.
 
 ## Coordination semantics
 
@@ -158,8 +179,9 @@ Decision conflicts are also advisory. DevRelay flags related active decisions ba
 
 ## Security boundaries
 
-- The repository root is resolved once when the server starts.
-- MCP tools cannot select another repository path.
+- The workspace root is resolved once when the server starts.
+- Agent working directories must exist inside that fixed workspace.
+- MCP tools cannot escape to another workspace path.
 - DevRelay does not expose arbitrary shell or test-command execution.
 - Git inspection uses fixed argument arrays without a shell.
 - `.env`, private keys, and credential-like paths are filtered.

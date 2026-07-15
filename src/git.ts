@@ -29,27 +29,74 @@ export function resolveRepositoryRoot(inputPath: string): string {
   if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
     throw new Error(`Repository directory does not exist: ${resolved}`);
   }
-  const root = runGit(resolved, ["rev-parse", "--show-toplevel"], true);
+  const root = tryResolveRepositoryRoot(resolved);
   if (!root) {
     throw new Error(`Not a Git repository: ${resolved}`);
   }
-  return fs.realpathSync(root);
+  return root;
+}
+
+export function tryResolveRepositoryRoot(inputPath: string): string | null {
+  const resolved = path.resolve(inputPath);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) return null;
+  const root = runGit(resolved, ["rev-parse", "--show-toplevel"], true);
+  return root ? fs.realpathSync(root) : null;
+}
+
+export function resolveWorkspaceRoot(inputPath: string): string {
+  const resolved = path.resolve(inputPath);
+  if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+    throw new Error(`Workspace directory does not exist: ${resolved}`);
+  }
+  const realPath = fs.realpathSync(resolved);
+  return tryResolveRepositoryRoot(realPath) ?? realPath;
+}
+
+export function resolveWorkingDirectory(workspaceRoot: string, inputPath?: string): string {
+  const candidate = inputPath
+    ? path.resolve(workspaceRoot, inputPath)
+    : workspaceRoot;
+  if (!fs.existsSync(candidate) || !fs.statSync(candidate).isDirectory()) {
+    throw new Error(`Working directory does not exist: ${candidate}`);
+  }
+  const realPath = fs.realpathSync(candidate);
+  const relative = path.relative(workspaceRoot, realPath);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Working directory is outside the DevRelay workspace: ${realPath}`);
+  }
+  return realPath;
 }
 
 export function captureGitSnapshot(rootPath: string): GitSnapshot {
-  const branch = runGit(rootPath, ["branch", "--show-current"], true) || "(detached)";
-  const head = runGit(rootPath, ["rev-parse", "HEAD"], true) || null;
-  const rawStatus = runGit(rootPath, ["status", "--short", "--untracked-files=normal"], true);
+  const repositoryRoot = tryResolveRepositoryRoot(rootPath);
+  if (!repositoryRoot) {
+    return {
+      available: false,
+      repositoryRoot: null,
+      branch: "(no git repository)",
+      head: null,
+      status: [],
+      changedFiles: [],
+      diffStat: "",
+      recentCommit: null,
+      reason: "The selected working directory is not inside a Git repository.",
+    };
+  }
+  const branch = runGit(repositoryRoot, ["branch", "--show-current"], true) || "(detached)";
+  const head = runGit(repositoryRoot, ["rev-parse", "HEAD"], true) || null;
+  const rawStatus = runGit(repositoryRoot, ["status", "--short", "--untracked-files=normal"], true);
   const status = rawStatus ? rawStatus.split("\n") : [];
-  const rawChangedFiles = runGit(rootPath, ["diff", "--name-only", "HEAD"], true);
-  const untracked = runGit(rootPath, ["ls-files", "--others", "--exclude-standard"], true);
+  const rawChangedFiles = runGit(repositoryRoot, ["diff", "--name-only", "HEAD"], true);
+  const untracked = runGit(repositoryRoot, ["ls-files", "--others", "--exclude-standard"], true);
   const changedFiles = filterSafePaths(
     [...rawChangedFiles.split("\n"), ...untracked.split("\n")].filter(Boolean),
   );
-  const diffStat = runGit(rootPath, ["diff", "--stat", "HEAD"], true);
-  const recentCommit = runGit(rootPath, ["log", "-1", "--pretty=format:%h %s"], true) || null;
+  const diffStat = runGit(repositoryRoot, ["diff", "--stat", "HEAD"], true);
+  const recentCommit = runGit(repositoryRoot, ["log", "-1", "--pretty=format:%h %s"], true) || null;
 
   return {
+    available: true,
+    repositoryRoot,
     branch,
     head,
     status: status.filter((line) => {
@@ -59,5 +106,6 @@ export function captureGitSnapshot(rootPath: string): GitSnapshot {
     changedFiles,
     diffStat,
     recentCommit,
+    reason: null,
   };
 }

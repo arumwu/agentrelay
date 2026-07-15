@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
   agent_id TEXT NOT NULL,
   agent_type TEXT NOT NULL,
+  working_path TEXT,
   branch TEXT NOT NULL,
   task_summary TEXT,
   status TEXT NOT NULL CHECK (status IN ('active', 'ended')),
@@ -152,5 +153,14 @@ export function openDatabase(rootPath: string): DatabaseHandle {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.exec(SCHEMA);
+  const sessionColumns = db.pragma("table_info(sessions)") as Array<{ name: string }>;
+  if (!sessionColumns.some((column) => column.name === "working_path")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN working_path TEXT");
+  }
+  db.exec(`
+    UPDATE sessions
+    SET working_path = (SELECT root_path FROM projects WHERE projects.id = sessions.project_id)
+    WHERE working_path IS NULL
+  `);
   return { db, dataDir, dbPath };
 }

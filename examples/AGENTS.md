@@ -1,14 +1,14 @@
 # DevRelay agent protocol
 
-This repository uses DevRelay as shared coordination state for coding agents.
+This repository or parent workspace uses DevRelay as shared coordination state for coding agents.
 
 ## Before editing
 
-1. Call `agent_join` with a stable agent ID, agent type, and concise task summary.
-2. Call `build_context` for the intended task.
+1. Call `agent_join` with a stable agent ID, agent type, concise task summary, and the current `working_directory` inside the configured workspace.
+2. Call `build_context` for the intended task and current `working_directory`.
 3. Call `agent_status` and inspect active agents, task leases, and scope claims.
 4. Call `claim_task` before taking an existing or new task.
-5. Call `claim_scope` for the files or modules you expect to modify.
+5. Call `claim_scope` for workspace-relative files or modules you expect to modify.
 6. Stop and coordinate if DevRelay reports a task conflict or relevant scope overlap.
 
 ## During work
