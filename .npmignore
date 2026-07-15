@@ -4,3 +4,5 @@ examples/
 tsconfig.json
 vitest.config.ts
 .github/
+.agentrelay/
+*.tgz
