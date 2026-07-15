@@ -171,7 +171,7 @@ Each coordinated repository or workspace owns its memory:
 
 `.agentrelay/` is excluded from this repository's Git history by default. In a non-Git workspace it remains a hidden local directory. A team may choose to version redacted handoff exports, but the database should normally remain local.
 
-When upgrading from the former DevRelay name, the first AgentRelay startup automatically renames `.devrelay/` to `.agentrelay/` and `devrelay.db` to `agentrelay.db` when the new paths do not already exist.
+Existing installations are migrated automatically to the `.agentrelay/agentrelay.db` storage layout on first startup.
 
 ## Coordination semantics
 
