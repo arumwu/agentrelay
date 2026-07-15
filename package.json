@@ -1,0 +1,63 @@
+{
+  "name": "@arumwu/devrelay",
+  "version": "0.1.0",
+  "description": "Local-first coordination, handoffs, and shared project memory for coding agents.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "devrelay": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run build && npm test",
+    "prepack": "npm run check"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "keywords": [
+    "mcp",
+    "coding-agents",
+    "multi-agent",
+    "handoff",
+    "project-memory"
+  ],
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arumwu/devrelay.git"
+  },
+  "bugs": {
+    "url": "https://github.com/arumwu/devrelay/issues"
+  },
+  "homepage": "https://github.com/arumwu/devrelay#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.11.1",
+    "commander": "^14.0.3",
+    "minimatch": "^10.2.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

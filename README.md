@@ -1,0 +1,192 @@
+# DevRelay
+
+**DevRelay coordinates coding agents working on the same repository.**
+
+It tracks active sessions, task leases, advisory file ownership, decisions, failed attempts, Git state, and handoffs so Codex, Claude Code, and other agents can continue each other's work without rebuilding context from scratch.
+
+> Not another chat memory. A local coordination layer for coding agents.
+
+## What works in v0.1
+
+- Local-first SQLite storage inside the repository
+- MCP server with ten focused tools
+- Agent sessions and heartbeats
+- Expiring task leases
+- Advisory file and glob claims with overlap warnings
+- Structured development events and architecture decisions
+- Potential decision-conflict detection
+- FTS5 search across events, decisions, and handoffs
+- Token-budgeted context packs
+- Deterministic Git-aware Markdown handoffs
+- CLI fallback for agents without lifecycle hooks
+- Secret redaction and sensitive-path filtering
+- No external model or hosted service required
+
+## The workflow
+
+```text
+Agent A joins
+  -> claims a task and file scope
+  -> records decisions, tests, and failed attempts
+  -> creates a Git-aware handoff and releases its leases
+
+Agent B joins
+  -> builds a task-specific context pack
+  -> sees prior attempts, decisions, tasks, and file claims
+  -> claims the continuation and starts from verified project state
+```
+
+## Install from source
+
+DevRelay is not published to npm yet.
+
+```bash
+git clone https://github.com/arumwu/devrelay.git
+cd devrelay
+npm install
+npm run build
+npm link
+```
+
+Node.js 22.13 or newer is required.
+
+## Quick start
+
+Run these commands from any Git repository, or pass `--repo /absolute/path` before the subcommand.
+
+```bash
+devrelay init
+devrelay join --agent codex-01 --type codex --task "Implement OAuth callback"
+```
+
+The `join` command returns a session UUID. Use it for claims and event records:
+
+```bash
+devrelay claim-task \
+  --session SESSION_UUID \
+  --title "Implement OAuth callback" \
+  --description "Validate callback and exchange tokens"
+
+devrelay claim-scope \
+  --session SESSION_UUID \
+  --pattern "src/auth/**"
+
+devrelay event \
+  --session SESSION_UUID \
+  --type attempt \
+  --summary "Service account approach failed" \
+  --content "Normal user OAuth requires authorization-code flow"
+
+devrelay context "Finish OAuth refresh flow" --budget 5000
+
+devrelay handoff \
+  --session SESSION_UUID \
+  --title "OAuth implementation handoff"
+```
+
+## Connect Codex
+
+For a source checkout, register the built CLI and pin it to the repository the agents will coordinate:
+
+```bash
+codex mcp add devrelay -- \
+  node /absolute/path/to/devrelay/dist/cli.js \
+  --repo /absolute/path/to/your/repository \
+  serve
+```
+
+Equivalent `config.toml`:
+
+```toml
+[mcp_servers.devrelay]
+command = "node"
+args = [
+  "/absolute/path/to/devrelay/dist/cli.js",
+  "--repo",
+  "/absolute/path/to/your/repository",
+  "serve"
+]
+```
+
+## Connect Claude Code
+
+```bash
+claude mcp add devrelay -- \
+  node /absolute/path/to/devrelay/dist/cli.js \
+  --repo /absolute/path/to/your/repository \
+  serve
+```
+
+Then place the lifecycle rules from [`examples/AGENTS.md`](examples/AGENTS.md) in the repository's `AGENTS.md` or `CLAUDE.md`.
+
+## MCP tools
+
+| Tool | Purpose |
+|---|---|
+| `project_init` | Initialize or inspect project-local storage and its repository boundary |
+| `agent_join` | Register an identified coding-agent session |
+| `agent_status` | Read coordination state and optionally heartbeat a session |
+| `claim_task` | Create or claim an expiring task lease |
+| `claim_scope` | Claim repository-relative files or globs and receive overlap warnings |
+| `record_event` | Record an attempt, result, issue, discovery, test, note, or completion |
+| `record_decision` | Record a structured decision and identify potential conflicts |
+| `search_memory` | Search events, decisions, and handoffs with SQLite FTS5 |
+| `build_context` | Compile task-specific Git, coordination, and memory context |
+| `create_handoff` | Generate a Markdown handoff and optionally release leases |
+
+## Local data
+
+Each coordinated repository owns its memory:
+
+```text
+.devrelay/
+├── devrelay.db
+├── events.jsonl
+└── handoffs/
+    └── 2026-...-handoff.md
+```
+
+`.devrelay/` is excluded from this repository's Git history by default. A team may choose to version redacted handoff exports, but the database should normally remain local.
+
+## Coordination semantics
+
+Task leases are exclusive while active. If a second agent requests the same task, DevRelay returns a conflict with the current owner and expiry.
+
+Scope claims are advisory. DevRelay warns when file or glob patterns may overlap, but it does not pretend it can prevent an agent from editing files outside MCP. Agents and hooks should treat warnings as a coordination stop.
+
+Decision conflicts are also advisory. DevRelay flags related active decisions based on task, title, and scope overlap; a human or agent must explicitly supersede the old decision.
+
+## Security boundaries
+
+- The repository root is resolved once when the server starts.
+- MCP tools cannot select another repository path.
+- DevRelay does not expose arbitrary shell or test-command execution.
+- Git inspection uses fixed argument arrays without a shell.
+- `.env`, private keys, and credential-like paths are filtered.
+- Common API keys, tokens, passwords, cookies, and bearer headers are redacted before storage.
+- Agent-authored memory remains evidence-linked context, not trusted executable instructions.
+
+See [SECURITY.md](SECURITY.md) for reporting and threat-model details.
+
+## Development
+
+```bash
+npm install
+npm run check
+```
+
+The integration tests create temporary Git repositories and exercise task conflict, scope overlap, memory search, decision conflict, handoff generation, and a real in-memory MCP client/server handshake.
+
+## Roadmap
+
+- Agent-specific hooks for automatic lifecycle capture
+- Git post-commit/post-merge adapters
+- Task completion and blocked-state commands
+- Optional semantic retrieval and reranking
+- Portable redacted exports and repository sync
+- GitHub issue and pull-request projections
+- A small coordination dashboard
+
+## License
+
+Apache License 2.0. See [LICENSE](LICENSE).

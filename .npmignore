@@ -1,0 +1,6 @@
+src/
+tests/
+examples/
+tsconfig.json
+vitest.config.ts
+.github/
