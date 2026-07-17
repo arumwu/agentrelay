@@ -1,6 +1,5 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -30,25 +29,8 @@ describe.skipIf(!hasTmux)("isolated tmux transport", () => {
     store = new ProjectStore(root);
     socketPath = path.join(os.tmpdir(), `agentrelay-tmux-${randomUUID()}.sock`);
     sessionName = `agentrelay-${randomUUID().slice(0, 8)}`;
-    const readerPath = path.join(root, "terminal-reader.mjs");
-    fs.writeFileSync(
-      readerPath,
-      [
-        'process.stdout.write("READY api_key=super-secret\\n");',
-        'process.stdin.setEncoding("utf8");',
-        'let pending = "";',
-        'process.stdin.on("data", (chunk) => {',
-        '  pending += chunk;',
-        '  const lines = pending.split(/\\r?\\n/u);',
-        '  pending = lines.pop() || "";',
-        '  for (const line of lines) process.stdout.write(`ACK:${line}\\n`);',
-        '});',
-      ].join("\n"),
-      "utf8",
-    );
-    const readerCommand = `${JSON.stringify(process.execPath)} ${JSON.stringify(readerPath)}`;
-    runTmux(["new-session", "-d", "-s", sessionName, "-n", "agents", readerCommand]);
-    runTmux(["split-window", "-d", "-t", `${sessionName}:`, readerCommand]);
+    runTmux(["new-session", "-d", "-s", sessionName, "-n", "agents", "cat"]);
+    runTmux(["split-window", "-d", "-t", `${sessionName}:`, "cat"]);
     [currentPane, workerPane] = runTmux([
       "list-panes",
       "-t",
@@ -56,6 +38,8 @@ describe.skipIf(!hasTmux)("isolated tmux transport", () => {
       "-F",
       "#{pane_id}",
     ]).split("\n") as [string, string];
+    runTmux(["send-keys", "-t", workerPane, "-l", "--", "READY api_key=super-secret"]);
+    runTmux(["send-keys", "-t", workerPane, "Enter"]);
     const transport = new TerminalTransport({
       socketPath,
       sessionName,
@@ -90,7 +74,7 @@ describe.skipIf(!hasTmux)("isolated tmux transport", () => {
     for (let attempt = 0; attempt < 20; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 50));
       output = (await service.read("worker.review", 30)).output;
-      if (output.includes("ACK:[AgentRelay")) break;
+      if (output.includes("[AgentRelay")) break;
     }
     expect(output).toContain("hello from test");
   });
@@ -100,7 +84,7 @@ describe.skipIf(!hasTmux)("isolated tmux transport", () => {
     await expect(service.send(currentPane, "do not loop")).rejects.toThrow(/own pane/u);
 
     const otherSession = `other-${randomUUID().slice(0, 8)}`;
-    runTmux(["new-session", "-d", "-s", otherSession]);
+    runTmux(["new-session", "-d", "-s", otherSession, "cat"]);
     const otherPane = runTmux(["list-panes", "-t", `${otherSession}:`, "-F", "#{pane_id}"]);
     await expect(service.read(otherPane, 10)).rejects.toThrow(/outside the allowed/u);
   });

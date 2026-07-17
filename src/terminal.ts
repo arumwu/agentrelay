@@ -13,7 +13,7 @@ import { redactSecrets } from "./security.js";
 import { ProjectStore } from "./store.js";
 
 const execFileAsync = promisify(execFile);
-const FIELD_SEPARATOR = "\u001f";
+const FIELD_SEPARATOR = "::AGENTRELAY_FIELD::";
 const DEFAULT_READ_LINES = 50;
 const MAX_READ_LINES = 200;
 const MAX_OUTPUT_BYTES = 64 * 1024;
