@@ -2,7 +2,9 @@
 import { Command, Option } from "commander";
 import { serveStdio } from "./mcp.js";
 import { ProjectStore } from "./store.js";
+import { TerminalService, TerminalTransport } from "./terminal.js";
 import type { AgentType, EventType, SearchResult } from "./types.js";
+import { AGENTRELAY_VERSION } from "./version.js";
 
 function print(value: unknown): void {
   process.stdout.write(`${typeof value === "string" ? value : JSON.stringify(value, null, 2)}\n`);
@@ -21,10 +23,37 @@ function withStore<T>(repo: string, callback: (store: ProjectStore) => T): T {
   }
 }
 
+async function withTerminal<T>(
+  repo: string,
+  options: { tmuxSession?: string; tmuxSocket?: string },
+  callback: (terminal: TerminalService) => Promise<T>,
+): Promise<T> {
+  const store = new ProjectStore(repo);
+  const transport = new TerminalTransport({
+    ...(options.tmuxSession ? { sessionName: options.tmuxSession } : {}),
+    ...(options.tmuxSocket ? { socketPath: options.tmuxSocket } : {}),
+  });
+  try {
+    return await callback(new TerminalService(store, transport));
+  } finally {
+    store.close();
+  }
+}
+
+function auditContext(options: { agentSession?: string; taskId?: string }): {
+  sessionId?: string;
+  taskId?: string;
+} {
+  return {
+    ...(options.agentSession ? { sessionId: options.agentSession } : {}),
+    ...(options.taskId ? { taskId: options.taskId } : {}),
+  };
+}
+
 const program = new Command()
   .name("agentrelay")
-  .description("Local-first coordination and shared project memory for coding agents.")
-  .version("0.3.1")
+  .description("Local-first coordination, shared project memory, and live tmux transport for coding agents.")
+  .version(AGENTRELAY_VERSION)
   .option("-r, --repo <path>", "Workspace or Git repository to coordinate", process.cwd());
 
 program
@@ -206,6 +235,88 @@ program
       ...(options.notes ? { notes: options.notes } : {}),
       endSession: !options.keepSession,
     })));
+  });
+
+const terminalCommand = program
+  .command("terminal")
+  .description("Coordinate trusted AI-agent panes through the built-in tmux transport")
+  .option("--tmux-session <name>", "Allow only this tmux session; defaults to the current session")
+  .option("--tmux-socket <path>", "Use an explicit tmux socket path");
+
+function terminalOptions(): { tmuxSession?: string; tmuxSocket?: string } {
+  const options = terminalCommand.opts<{ tmuxSession?: string; tmuxSocket?: string }>();
+  return {
+    ...(options.tmuxSession ? { tmuxSession: options.tmuxSession } : {}),
+    ...(options.tmuxSocket ? { tmuxSocket: options.tmuxSocket } : {}),
+  };
+}
+
+terminalCommand
+  .command("list")
+  .description("List panes in the allowed tmux session")
+  .action(async () => {
+    const repo = program.opts<{ repo: string }>().repo;
+    print(await withTerminal(repo, terminalOptions(), (terminal) => terminal.list()));
+  });
+
+terminalCommand
+  .command("read")
+  .description("Read redacted pane output and open a short-lived send guard")
+  .argument("<target>", "Pane id, tmux target, or AgentRelay pane label")
+  .option("--lines <count>", "Lines to read, from 1 to 200", "50")
+  .option("--agent-session <uuid>", "AgentRelay session for the audit event")
+  .option("--task-id <uuid>", "AgentRelay task for the audit event")
+  .action(async (target: string, options: { lines: string; agentSession?: string; taskId?: string }) => {
+    const repo = program.opts<{ repo: string }>().repo;
+    print(await withTerminal(
+      repo,
+      terminalOptions(),
+      (terminal) => terminal.read(target, Number(options.lines), auditContext(options)),
+    ));
+  });
+
+terminalCommand
+  .command("send")
+  .description("Send one literal message and Enter after a recent terminal read")
+  .argument("<target>", "Pane id, tmux target, or AgentRelay pane label")
+  .argument("<message>", "Single-line message, up to 8192 UTF-8 bytes")
+  .option("--agent-session <uuid>", "AgentRelay session for the audit event")
+  .option("--task-id <uuid>", "AgentRelay task for the audit event")
+  .action(async (target: string, message: string, options: { agentSession?: string; taskId?: string }) => {
+    const repo = program.opts<{ repo: string }>().repo;
+    print(await withTerminal(
+      repo,
+      terminalOptions(),
+      (terminal) => terminal.send(target, message, auditContext(options)),
+    ));
+  });
+
+terminalCommand
+  .command("name")
+  .description("Assign an AgentRelay-specific label to a pane")
+  .argument("<target>", "Pane id or tmux target")
+  .argument("<label>", "Letters, numbers, dots, underscores, or hyphens")
+  .option("--agent-session <uuid>", "AgentRelay session for the audit event")
+  .option("--task-id <uuid>", "AgentRelay task for the audit event")
+  .action(async (target: string, label: string, options: { agentSession?: string; taskId?: string }) => {
+    const repo = program.opts<{ repo: string }>().repo;
+    print(await withTerminal(
+      repo,
+      terminalOptions(),
+      (terminal) => terminal.name(target, label, auditContext(options)),
+    ));
+  });
+
+terminalCommand
+  .command("doctor")
+  .description("Diagnose tmux binary, socket, session, and safety limits")
+  .action(async () => {
+    const options = terminalOptions();
+    const transport = new TerminalTransport({
+      ...(options.tmuxSession ? { sessionName: options.tmuxSession } : {}),
+      ...(options.tmuxSocket ? { socketPath: options.tmuxSocket } : {}),
+    });
+    print(await transport.doctor());
   });
 
 program.parseAsync().catch((error: unknown) => {

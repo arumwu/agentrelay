@@ -1,7 +1,7 @@
 {
   "name": "@arumwu/agentrelay",
-  "version": "0.3.1",
-  "description": "One project. Multiple AI agents. Zero repeated work.",
+  "version": "0.4.0",
+  "description": "Local-first coordination, shared project memory, and live tmux transport for coding agents.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -17,7 +17,10 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "SECURITY.md",
+    "LICENSE",
+    "LICENSES",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -25,6 +28,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "npm run build && npm test",
+    "prepare": "npm run build",
     "prepack": "npm run check"
   },
   "engines": {
@@ -34,6 +38,8 @@
     "mcp",
     "coding-agents",
     "multi-agent",
+    "tmux",
+    "terminal",
     "handoff",
     "project-memory"
   ],

@@ -14,23 +14,31 @@ Include the affected version, operating system, reproduction steps, security imp
 
 AgentRelay assumes coding agents and repository content may produce inaccurate or adversarial text. Stored memory is treated as context, not executable instructions.
 
-The v0.1 boundary is intentionally narrow:
+The boundary is intentionally narrow:
 
 - one fixed repository or workspace boundary per server process
 - local SQLite and Markdown storage
-- no arbitrary shell command tool
+- no generic shell, arbitrary-key, or test-command tool
 - fixed Git command argument arrays
 - workspace-relative scope paths only
 - path traversal and absolute-path rejection
 - sensitive filename filtering
 - best-effort secret redaction before persistence
+- one allowed tmux session per server process
+- one-use, actor-and-pane-specific read-before-send guards
+- single-line terminal messages with byte limits and self-target rejection
+- redacted and size-limited terminal reads
+- terminal audit metadata that excludes captured output and message text
 
 Secret redaction is defense in depth, not a substitute for avoiding secret input. Users should not intentionally send credentials to AgentRelay.
 
-## Out of scope for v0.1
+`terminal_send` types literal text followed by Enter. If the target is a shell pane, that text can execute as a command. Only expose AgentRelay to trusted MCP clients, use a dedicated tmux session, label intended agent panes, inspect the pane with `terminal_read`, and do not target unrelated shells or production consoles.
+
+## Out of scope
 
 - hostile local users with filesystem access to `.agentrelay/`
 - full-disk compromise
 - malicious changes to the AgentRelay executable or dependencies
+- malicious or compromised processes already running inside the allowed tmux session
 - perfect detection of every possible credential format
 - enforcing scope claims against tools that bypass AgentRelay

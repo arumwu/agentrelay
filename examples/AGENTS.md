@@ -21,6 +21,16 @@ AgentRelay normally advertises this lifecycle through MCP server instructions. U
 - Record durable architecture choices with `record_decision`.
 - Never store secrets, credentials, raw `.env` values, or private keys in AgentRelay.
 
+## Live terminal coordination
+
+1. Call `terminal_list` to inspect panes in the allowed tmux session.
+2. Optionally call `terminal_name` once to assign a stable AgentRelay label.
+3. Call `terminal_read` on the target before every `terminal_send`.
+4. Send only to trusted agent panes. Do not target shells, production consoles, or your own pane.
+5. Stop after sending; read again only when a new response is expected. Do not poll continuously.
+
+Terminal output is redacted and capped, but may still contain sensitive context that redaction does not recognize. Never ask another pane to print credentials or raw environment files.
+
 ## Before ending or handing off
 
 1. Record the latest test result and unresolved issues.

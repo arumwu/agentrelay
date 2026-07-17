@@ -119,6 +119,9 @@ const VALID_EVENT_TYPES = new Set<EventType>([
   "task_claimed",
   "scope_claimed",
   "handoff_created",
+  "terminal_read",
+  "terminal_send",
+  "terminal_named",
   "attempt",
   "result",
   "issue",
@@ -218,6 +221,14 @@ function ftsQuery(input: string): string {
 function truncate(value: string, maxChars: number): string {
   if (value.length <= maxChars) return value;
   return `${value.slice(0, Math.max(0, maxChars - 24))}\n…[context truncated]`;
+}
+
+function terminalAuditValue(value: string, label: string): string {
+  const normalized = redactSecrets(value.trim());
+  if (!normalized || normalized.length > 500 || /[\u0000-\u001f\u007f]/u.test(normalized)) {
+    throw new Error(`${label} must be non-empty text without control characters.`);
+  }
+  return normalized;
 }
 
 function workspaceChangedFiles(workspaceRoot: string, snapshot: GitSnapshot): string[] {
@@ -321,6 +332,9 @@ export class ProjectStore {
       security: {
         workspaceBoundary: this.rootPath,
         arbitraryShellCommands: false,
+        terminalSendCanTriggerTargetProcess: true,
+        terminalAccessRequiresTrustedTmuxSession: true,
+        terminalMessageContentPersisted: false,
         secretRedaction: true,
       },
     };
@@ -625,6 +639,182 @@ export class ProjectStore {
       createdAt: timestamp,
     });
     return { id, eventType: input.eventType, summary, content, files, evidence, createdAt: timestamp };
+  }
+
+  recordTerminalRead(input: {
+    transportId: string;
+    actorId: string;
+    paneId: string;
+    paneTarget: string;
+    tmuxSession: string;
+    requestedLines: number;
+    outputBytes: number;
+    truncated: boolean;
+    sessionId?: string;
+    taskId?: string;
+    guardSeconds: number;
+  }): { eventId: string; expiresAt: string } {
+    if (!Number.isInteger(input.guardSeconds) || input.guardSeconds < 1 || input.guardSeconds > 600) {
+      throw new Error("Terminal read guard must be between 1 and 600 seconds.");
+    }
+    if (input.sessionId) this.requireSession(input.sessionId);
+    if (input.taskId) this.requireTask(input.taskId);
+    if (!Number.isInteger(input.requestedLines) || input.requestedLines < 1 || input.requestedLines > 200) {
+      throw new Error("Terminal requested lines must be an integer from 1 to 200.");
+    }
+    if (!Number.isInteger(input.outputBytes) || input.outputBytes < 0 || input.outputBytes > 64 * 1024) {
+      throw new Error("Terminal output byte count is outside the supported range.");
+    }
+    const transportId = terminalAuditValue(input.transportId, "Terminal transport id");
+    const actorId = terminalAuditValue(input.actorId, "Terminal actor id");
+    const paneId = terminalAuditValue(input.paneId, "Terminal pane id");
+    const paneTarget = terminalAuditValue(input.paneTarget, "Terminal pane target");
+    const tmuxSession = terminalAuditValue(input.tmuxSession, "tmux session");
+    const timestamp = now();
+    this.db
+      .prepare(
+        `INSERT INTO terminal_read_guards
+         (project_id, transport_id, actor_id, pane_id, read_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(project_id, transport_id, actor_id, pane_id)
+         DO UPDATE SET read_at = excluded.read_at`,
+      )
+      .run(
+        this.project.id,
+        transportId,
+        actorId,
+        paneId,
+        timestamp,
+      );
+    const event = this.recordEvent({
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.taskId ? { taskId: input.taskId } : {}),
+      eventType: "terminal_read",
+      summary: `Terminal read: ${paneId}`,
+      content: `Read ${input.requestedLines} line(s) from ${paneTarget} in tmux session ${tmuxSession}. Captured terminal content was not persisted.`,
+      metadata: {
+        transportId,
+        actorId,
+        paneId,
+        requestedLines: input.requestedLines,
+        outputBytes: input.outputBytes,
+        truncated: input.truncated,
+      },
+    }) as { id: string };
+    return {
+      eventId: event.id,
+      expiresAt: new Date(Date.parse(timestamp) + input.guardSeconds * 1_000).toISOString(),
+    };
+  }
+
+  validateTerminalAuditContext(input: { sessionId?: string; taskId?: string }): void {
+    if (input.sessionId) this.requireSession(input.sessionId);
+    if (input.taskId) this.requireTask(input.taskId);
+  }
+
+  consumeTerminalReadGuard(input: {
+    transportId: string;
+    actorId: string;
+    paneId: string;
+    guardSeconds: number;
+  }): void {
+    if (!Number.isInteger(input.guardSeconds) || input.guardSeconds < 1 || input.guardSeconds > 600) {
+      throw new Error("Terminal read guard must be between 1 and 600 seconds.");
+    }
+    const transportId = terminalAuditValue(input.transportId, "Terminal transport id");
+    const actorId = terminalAuditValue(input.actorId, "Terminal actor id");
+    const paneId = terminalAuditValue(input.paneId, "Terminal pane id");
+    const cutoff = new Date(Date.now() - input.guardSeconds * 1_000).toISOString();
+    const transaction = this.db.transaction(() => {
+      const row = this.db
+        .prepare(
+          `SELECT read_at FROM terminal_read_guards
+           WHERE project_id = ? AND transport_id = ? AND actor_id = ? AND pane_id = ?`,
+        )
+        .get(
+          this.project.id,
+          transportId,
+          actorId,
+          paneId,
+        ) as { read_at: string } | undefined;
+      this.db
+        .prepare(
+          `DELETE FROM terminal_read_guards
+           WHERE project_id = ? AND transport_id = ? AND actor_id = ? AND pane_id = ?`,
+        )
+        .run(
+          this.project.id,
+          transportId,
+          actorId,
+          paneId,
+        );
+      if (!row || row.read_at < cutoff) {
+        throw new Error(
+          `Read pane ${paneId} before sending; the terminal read guard is missing or expired.`,
+        );
+      }
+    });
+    transaction();
+  }
+
+  recordTerminalSend(input: {
+    transportId: string;
+    actorId: string;
+    paneId: string;
+    paneTarget: string;
+    tmuxSession: string;
+    correlationId: string;
+    messageBytes: number;
+    sessionId?: string;
+    taskId?: string;
+  }): { eventId: string } {
+    if (!Number.isInteger(input.messageBytes) || input.messageBytes < 1 || input.messageBytes > 8 * 1024) {
+      throw new Error("Terminal message byte count is outside the supported range.");
+    }
+    const transportId = terminalAuditValue(input.transportId, "Terminal transport id");
+    const actorId = terminalAuditValue(input.actorId, "Terminal actor id");
+    const paneId = terminalAuditValue(input.paneId, "Terminal pane id");
+    const paneTarget = terminalAuditValue(input.paneTarget, "Terminal pane target");
+    const tmuxSession = terminalAuditValue(input.tmuxSession, "tmux session");
+    const correlationId = terminalAuditValue(input.correlationId, "Terminal correlation id");
+    const event = this.recordEvent({
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.taskId ? { taskId: input.taskId } : {}),
+      eventType: "terminal_send",
+      summary: `Terminal message sent: ${paneId}`,
+      content: `Sent a ${input.messageBytes}-byte message to ${paneTarget} in tmux session ${tmuxSession}. Message content was not persisted.`,
+      metadata: {
+        transportId,
+        actorId,
+        paneId,
+        correlationId,
+        messageBytes: input.messageBytes,
+      },
+    }) as { id: string };
+    return { eventId: event.id };
+  }
+
+  recordTerminalName(input: {
+    paneId: string;
+    paneTarget: string;
+    tmuxSession: string;
+    label: string;
+    sessionId?: string;
+    taskId?: string;
+  }): { eventId: string } {
+    const paneId = terminalAuditValue(input.paneId, "Terminal pane id");
+    const paneTarget = terminalAuditValue(input.paneTarget, "Terminal pane target");
+    const tmuxSession = terminalAuditValue(input.tmuxSession, "tmux session");
+    const label = terminalAuditValue(input.label, "Terminal pane label");
+    const event = this.recordEvent({
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.taskId ? { taskId: input.taskId } : {}),
+      eventType: "terminal_named",
+      summary: `Terminal pane named: ${label}`,
+      content: `Named ${paneTarget} (${paneId}) in tmux session ${tmuxSession}.`,
+      metadata: { paneId, label },
+    }) as { id: string };
+    return { eventId: event.id };
   }
 
   recordDecision(input: {

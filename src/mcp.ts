@@ -1,8 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import * as z from "zod/v4";
+import { redactSecrets } from "./security.js";
 import { ProjectStore } from "./store.js";
+import { TerminalService, TerminalTransport } from "./terminal.js";
 import type { AgentType, EventType, SearchResult } from "./types.js";
+import { AGENTRELAY_VERSION } from "./version.js";
 
 const agentTypes = ["codex", "claude-code", "gemini-cli", "cursor", "cline", "other"] as const;
 const eventTypes = [
@@ -23,6 +26,7 @@ export const AGENTRELAY_INSTRUCTIONS = [
   "Before editing, call claim_task and claim_scope and stop on relevant conflicts.",
   "Record durable decisions with record_decision and tests, results, failures, discoveries, and blockers with record_event.",
   "Before ending or handing off, call create_handoff.",
+  "For live tmux coordination, call terminal_list, then terminal_read on the target pane, then terminal_send. Only target trusted panes in the configured tmux session.",
   "Never store credentials, tokens, raw .env values, cookies, or private keys.",
 ].join(" ");
 
@@ -33,14 +37,14 @@ function response(value: unknown) {
 }
 
 function failure(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = redactSecrets(error instanceof Error ? error.message : String(error));
   return {
     isError: true,
     content: [{ type: "text" as const, text: message }],
   };
 }
 
-function registerTools(server: McpServer, store: ProjectStore): void {
+function registerTools(server: McpServer, store: ProjectStore, terminal: TerminalService): void {
   server.registerTool(
     "project_init",
     {
@@ -322,14 +326,121 @@ function registerTools(server: McpServer, store: ProjectStore): void {
       }
     },
   );
+
+  server.registerTool(
+    "terminal_list",
+    {
+      title: "List panes in the allowed tmux session",
+      description: "List only the panes in AgentRelay's current or explicitly configured tmux session.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+    },
+    async () => {
+      try {
+        return response(await terminal.list());
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "terminal_read",
+    {
+      title: "Read a tmux pane",
+      description: "Read redacted, size-limited output from a pane and open a 90-second guard for one terminal_send.",
+      inputSchema: {
+        target: z.string().min(1).max(500),
+        lines: z.number().int().min(1).max(200).default(50),
+        session_id: z.string().uuid().optional(),
+        task_id: z.string().uuid().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    },
+    async ({ target, lines, session_id, task_id }) => {
+      try {
+        return response(await terminal.read(target, lines, {
+          ...(session_id ? { sessionId: session_id } : {}),
+          ...(task_id ? { taskId: task_id } : {}),
+        }));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "terminal_send",
+    {
+      title: "Send a message to a tmux pane",
+      description: "Send one literal single-line message and Enter to a trusted pane after terminal_read. No arbitrary key tool is exposed.",
+      inputSchema: {
+        target: z.string().min(1).max(500),
+        message: z.string().min(1).max(8_192),
+        session_id: z.string().uuid().optional(),
+        task_id: z.string().uuid().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    },
+    async ({ target, message, session_id, task_id }) => {
+      try {
+        return response(await terminal.send(target, message, {
+          ...(session_id ? { sessionId: session_id } : {}),
+          ...(task_id ? { taskId: task_id } : {}),
+        }));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "terminal_name",
+    {
+      title: "Name a tmux pane",
+      description: "Assign an AgentRelay-specific label to a pane in the allowed tmux session.",
+      inputSchema: {
+        target: z.string().min(1).max(500),
+        label: z.string().min(1).max(64),
+        session_id: z.string().uuid().optional(),
+        task_id: z.string().uuid().optional(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    async ({ target, label, session_id, task_id }) => {
+      try {
+        return response(await terminal.name(target, label, {
+          ...(session_id ? { sessionId: session_id } : {}),
+          ...(task_id ? { taskId: task_id } : {}),
+        }));
+      } catch (error) {
+        return failure(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "terminal_doctor",
+    {
+      title: "Diagnose AgentRelay tmux access",
+      description: "Check the tmux binary, socket inheritance, session boundary, pane identity, and safety limits.",
+      inputSchema: {},
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+    },
+    async () => response(await terminal.doctor()),
+  );
 }
 
-export function createMcpServer(store: ProjectStore): McpServer {
+export interface McpServerOptions {
+  terminalTransport?: TerminalTransport;
+}
+
+export function createMcpServer(store: ProjectStore, options: McpServerOptions = {}): McpServer {
   const server = new McpServer(
-    { name: "agentrelay", version: "0.3.1" },
+    { name: "agentrelay", version: AGENTRELAY_VERSION },
     { instructions: AGENTRELAY_INSTRUCTIONS },
   );
-  registerTools(server, store);
+  registerTools(server, store, new TerminalService(store, options.terminalTransport));
   return server;
 }
 

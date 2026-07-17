@@ -20,6 +20,18 @@ describe("security boundaries", () => {
     expect(value).toContain("[REDACTED]");
   });
 
+  it("redacts private keys and credentials embedded in URLs", () => {
+    const value = redactSecrets([
+      "postgres://agent:database-password@example.invalid/app",
+      "-----BEGIN PRIVATE KEY-----",
+      "private-key-material",
+      "-----END PRIVATE KEY-----",
+    ].join("\n"));
+    expect(value).not.toContain("database-password");
+    expect(value).not.toContain("private-key-material");
+    expect(value).toContain("[REDACTED_PRIVATE_KEY]");
+  });
+
   it("blocks traversal, absolute paths, and credential files", () => {
     expect(() => assertSafeRelativePattern("../outside.ts")).toThrow(/escape/);
     expect(() => assertSafeRelativePattern("/tmp/file")).toThrow(/repository-relative/);
