@@ -155,6 +155,7 @@ export class TerminalTransport {
   private readonly environment: NodeJS.ProcessEnv;
   private readonly socketSource: "configured" | "inherited" | "default";
   private resolvedSession: string | null = null;
+  private resolvedSessionTarget: string | null = null;
 
   constructor(options: TerminalTransportOptions = {}) {
     this.environment = options.environment ?? process.env;
@@ -249,6 +250,30 @@ export class TerminalTransport {
     ].join(FIELD_SEPARATOR);
   }
 
+  private async allowedSessionTarget(): Promise<string> {
+    if (this.resolvedSessionTarget) return this.resolvedSessionTarget;
+    const session = await this.allowedSession();
+    const output = await this.run([
+      "list-sessions",
+      "-F",
+      ["#{session_id}", "#{session_name}"].join(FIELD_SEPARATOR),
+    ]);
+    const matches = output
+      .trim()
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => line.split(FIELD_SEPARATOR))
+      .filter(([, name]) => name === session);
+    if (matches.length === 0 || !matches[0]?.[0]) {
+      throw new Error(`The allowed tmux session '${session}' does not exist.`);
+    }
+    if (matches.length > 1) {
+      throw new Error(`More than one tmux session resolved to '${session}'.`);
+    }
+    this.resolvedSessionTarget = `${matches[0][0]}:`;
+    return this.resolvedSessionTarget;
+  }
+
   private async directPane(target: string): Promise<TerminalPane> {
     const output = await this.run([
       "display-message",
@@ -280,11 +305,10 @@ export class TerminalTransport {
   }
 
   async list(): Promise<TerminalPane[]> {
-    const session = await this.allowedSession();
     const output = await this.run([
       "list-panes",
       "-t",
-      `=${session}`,
+      await this.allowedSessionTarget(),
       "-F",
       this.paneFormat(),
     ]);
@@ -392,7 +416,7 @@ export class TerminalTransport {
     if (version) {
       try {
         session = await this.allowedSession();
-        await this.run(["has-session", "-t", `=${session}`]);
+        await this.allowedSessionTarget();
       } catch (error) {
         problems.push(compactError(error));
       }

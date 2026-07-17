@@ -48,11 +48,11 @@ describe.skipIf(!hasTmux)("isolated tmux transport", () => {
     );
     const readerCommand = `${JSON.stringify(process.execPath)} ${JSON.stringify(readerPath)}`;
     runTmux(["new-session", "-d", "-s", sessionName, "-n", "agents", readerCommand]);
-    runTmux(["split-window", "-d", "-t", `=${sessionName}`, readerCommand]);
+    runTmux(["split-window", "-d", "-t", `${sessionName}:`, readerCommand]);
     [currentPane, workerPane] = runTmux([
       "list-panes",
       "-t",
-      `=${sessionName}`,
+      `${sessionName}:`,
       "-F",
       "#{pane_id}",
     ]).split("\n") as [string, string];
@@ -101,7 +101,7 @@ describe.skipIf(!hasTmux)("isolated tmux transport", () => {
 
     const otherSession = `other-${randomUUID().slice(0, 8)}`;
     runTmux(["new-session", "-d", "-s", otherSession]);
-    const otherPane = runTmux(["list-panes", "-t", `=${otherSession}`, "-F", "#{pane_id}"]);
+    const otherPane = runTmux(["list-panes", "-t", `${otherSession}:`, "-F", "#{pane_id}"]);
     await expect(service.read(otherPane, 10)).rejects.toThrow(/outside the allowed/u);
   });
 });
