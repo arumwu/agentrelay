@@ -4,15 +4,19 @@
 
 **Let AI continue where another AI stopped.**
 
-It tracks active sessions, task leases, advisory file ownership, decisions, failed attempts, Git state, and handoffs so Codex, Claude Code, and other agents can continue each other's work without rebuilding context from scratch.
+It tracks active sessions, task leases, advisory file ownership, decisions, failed attempts, Git state, and handoffs so Codex, Claude Code, and other agents can continue each other's work without rebuilding context from scratch. Its built-in tmux transport also lets those agents read and message trusted panes without installing a second MCP server.
 
 > Not another chat memory. A local coordination layer for coding agents.
 
-## What works in v0.3.1
+## What works in v0.4.0
 
 - Local-first SQLite storage inside a repository or workspace
 - Fixed non-Git workspace boundaries with child-repository Git context
-- MCP server with ten focused tools
+- MCP server with ten coordination tools and five live terminal tools
+- Built-in tmux transport with no `tmux-bridge-mcp` runtime dependency
+- One-session tmux boundary with pane labels and self-message prevention
+- Redacted, size-limited terminal reads and single-line message sends
+- Persistent read-before-send guards and content-free terminal audit events
 - Agent sessions and heartbeats
 - Expiring task leases
 - Advisory file and glob claims with overlap warnings
@@ -39,9 +43,18 @@ Agent B joins
   -> claims the continuation and starts from verified project state
 ```
 
-## Install from source
+## Install
 
 AgentRelay is not published to npm yet.
+
+Install the current GitHub repository as one self-contained CLI and MCP server:
+
+```bash
+npm install -g github:arumwu/agentrelay
+agentrelay --version
+```
+
+Or install from a source checkout:
 
 ```bash
 git clone https://github.com/arumwu/agentrelay.git
@@ -51,7 +64,7 @@ npm run build
 npm link
 ```
 
-Node.js 22.13 or newer is required.
+Node.js 22.13 or newer is required. The coordination and memory features work without tmux; the live terminal tools additionally require tmux 3.2 or newer.
 
 ## Quick start
 
@@ -120,6 +133,31 @@ claude mcp add --scope local agentrelay -- \
 
 AgentRelay advertises its lifecycle instructions through MCP initialization. For clients that do not consume server instructions, place the fallback rules from [`examples/AGENTS.md`](examples/AGENTS.md) in the repository's `AGENTS.md` or `CLAUDE.md`.
 
+## Live tmux transport
+
+AgentRelay includes the terminal transport directly. Installing `@arumwu/agentrelay` or the GitHub package is enough; do not install or register a separate `tmux-bridge-mcp` server.
+
+Run the agents you want to coordinate in one tmux session. When AgentRelay starts inside tmux it automatically restricts terminal access to that current session:
+
+```bash
+agentrelay terminal list
+agentrelay terminal name %3 codex
+agentrelay terminal read codex --lines 40
+agentrelay terminal send codex "Review src/auth.ts and report any regressions"
+```
+
+`terminal read` opens a 90-second, one-use guard for that actor and pane. After one send, read the pane again before sending another message. AgentRelay stores audit metadata such as the pane, byte count, and correlation ID, but never persists captured terminal output or message content.
+
+If AgentRelay starts outside tmux, explicitly allow one session:
+
+```bash
+agentrelay terminal --tmux-session agent-work list
+```
+
+For MCP clients launched outside tmux, set `AGENTRELAY_TMUX_SESSION` in that server's environment. Set `AGENTRELAY_TMUX_SOCKET` only when using a non-default socket. Terminal targets outside the selected session are rejected.
+
+`terminal_send` types one literal, single-line message followed by Enter. A shell pane can interpret that text as a command, so only label and target panes you trust. AgentRelay intentionally exposes no arbitrary key or generic shell-execution tool.
+
 ## Workspace mode
 
 A workspace may contain many independent Git repositories and non-Git projects:
@@ -150,6 +188,11 @@ Task and scope claims remain workspace-wide. In the example above, claim `produc
 | `search_memory` | Search events, decisions, and handoffs with SQLite FTS5 |
 | `build_context` | Compile task-specific Git, coordination, and memory context |
 | `create_handoff` | Generate a Markdown handoff and optionally release leases |
+| `terminal_list` | List panes only in the allowed tmux session |
+| `terminal_read` | Read redacted, capped pane output and open a one-use send guard |
+| `terminal_send` | Send one literal single-line message and Enter after a recent read |
+| `terminal_name` | Assign an AgentRelay-specific pane label |
+| `terminal_doctor` | Diagnose tmux binary, socket, session, and safety limits |
 
 ## Local data
 
@@ -180,7 +223,11 @@ Decision conflicts are also advisory. AgentRelay flags related active decisions 
 - The workspace root is resolved once when the server starts.
 - Agent working directories must exist inside that fixed workspace.
 - MCP tools cannot escape to another workspace path.
-- AgentRelay does not expose arbitrary shell or test-command execution.
+- AgentRelay does not expose a generic shell, arbitrary-key, or test-command tool.
+- Terminal access is limited to the current or explicitly configured tmux session.
+- Terminal sends require a recent read, reject self-targeting, and accept only one literal line.
+- Terminal output is redacted and size-limited; captured output and message text are not persisted.
+- Sending to a shell pane may still execute text, so terminal access is only for trusted panes.
 - Git inspection uses fixed argument arrays without a shell.
 - `.env`, private keys, and credential-like paths are filtered.
 - Common API keys, tokens, passwords, cookies, and bearer headers are redacted before storage.
@@ -195,7 +242,7 @@ npm install
 npm run check
 ```
 
-The integration tests create temporary Git repositories and exercise task conflict, scope overlap, memory search, decision conflict, handoff generation, and a real in-memory MCP client/server handshake.
+The integration tests create temporary Git repositories and exercise task conflict, scope overlap, memory search, decision conflict, handoff generation, and a real in-memory MCP client/server handshake. When tmux is installed, they also create an isolated socket and verify real pane listing, labeling, read-before-send enforcement, messaging, self-target rejection, and cross-session isolation. CI always installs tmux and runs this path.
 
 ## Roadmap
 
@@ -209,4 +256,4 @@ The integration tests create temporary Git repositories and exercise task confli
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+AgentRelay is licensed under Apache License 2.0. See [LICENSE](LICENSE). The built-in terminal transport includes work adapted from MIT-declared `tmux-bridge-mcp`; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and [LICENSES/tmux-bridge-mcp-MIT.txt](LICENSES/tmux-bridge-mcp-MIT.txt).

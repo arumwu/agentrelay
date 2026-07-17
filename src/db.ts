@@ -96,6 +96,15 @@ CREATE TABLE IF NOT EXISTS handoffs (
   created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS terminal_read_guards (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  transport_id TEXT NOT NULL,
+  actor_id TEXT NOT NULL,
+  pane_id TEXT NOT NULL,
+  read_at TEXT NOT NULL,
+  PRIMARY KEY (project_id, transport_id, actor_id, pane_id)
+);
+
 CREATE TABLE IF NOT EXISTS search_documents (
   id TEXT PRIMARY KEY,
   project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -136,6 +145,7 @@ CREATE INDEX IF NOT EXISTS idx_scopes_project_expiry ON scope_claims(project_id,
 CREATE INDEX IF NOT EXISTS idx_events_project_created ON events(project_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_decisions_project_status ON decisions(project_id, status, created_at);
 CREATE INDEX IF NOT EXISTS idx_handoffs_project_created ON handoffs(project_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_terminal_guards_read_at ON terminal_read_guards(project_id, read_at);
 `;
 
 export interface DatabaseHandle {

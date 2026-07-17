@@ -8,6 +8,8 @@ const SENSITIVE_PATH_PATTERNS = [
 ];
 
 const SECRET_PATTERNS: Array<[RegExp, string]> = [
+  [/(-----BEGIN [^-\r\n]*PRIVATE KEY-----)[\s\S]*?(-----END [^-\r\n]*PRIVATE KEY-----)/g, "$1\n[REDACTED_PRIVATE_KEY]\n$2"],
+  [/(\b[a-z][a-z0-9+.-]*:\/\/[^:\s/@]+:)[^@\s/]+(@)/gi, "$1[REDACTED]$2"],
   [/(\b(?:(?:[a-z0-9]+[_-])?(?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|client[_-]?secret)|password|passwd|cookie)\b\s*[:=]\s*)[^\s,;]+/gi, "$1[REDACTED]"],
   [/(\bAuthorization\s*:\s*Bearer\s+)[A-Za-z0-9._~+\/-]+=*/gi, "$1[REDACTED]"],
   [/\b(?:sk|pk|ghp|github_pat)_[A-Za-z0-9_\-]{16,}\b/g, "[REDACTED_TOKEN]"],

@@ -19,7 +19,7 @@ describe("MCP surface", () => {
     removeTestRepository(root);
   });
 
-  it("advertises the ten coordination tools and accepts a join call", async () => {
+  it("advertises coordination and terminal tools and accepts a join call", async () => {
     const server = createMcpServer(store);
     const client = new Client({ name: "agentrelay-test-client", version: "1.0.0" });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
@@ -41,6 +41,11 @@ describe("MCP surface", () => {
       "record_decision",
       "record_event",
       "search_memory",
+      "terminal_doctor",
+      "terminal_list",
+      "terminal_name",
+      "terminal_read",
+      "terminal_send",
     ]);
 
     const result = await client.callTool({
@@ -53,6 +58,10 @@ describe("MCP surface", () => {
     });
     expect(result.isError).not.toBe(true);
     expect(JSON.stringify(result.content)).toContain("codex-test");
+
+    const doctor = await client.callTool({ name: "terminal_doctor", arguments: {} });
+    expect(doctor.isError).not.toBe(true);
+    expect(JSON.stringify(doctor.content)).toContain("readGuardSeconds");
 
     await client.close();
     await server.close();
